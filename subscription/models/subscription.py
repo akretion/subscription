@@ -9,8 +9,9 @@ from odoo.exceptions import UserError
 
 
 def _get_document_types(self):
-    return [(doc.model.model, doc.name) for doc
+    res = [(doc.model.model, doc.name) for doc
             in self.env['subscription.document'].search([], order='name')]
+    return res
 
 
 class SubscriptionDocument(models.Model):
@@ -22,7 +23,9 @@ class SubscriptionDocument(models.Model):
         default=True,
         help="If the active field is set to False, it will allow you to "
         "hide the subscription document without removing it.")
-    model = fields.Many2one('ir.model', string="Object", required=True)
+    # in v14, Odoo doesn't allow to have the 'model' field required=True, so I set it as
+    # required in the view
+    model = fields.Many2one('ir.model', string="Object")
     field_ids = fields.One2many(
         'subscription.document.fields', 'document_id', string='Fields',
         copy=True)
@@ -33,9 +36,10 @@ class SubscriptionDocumentFields(models.Model):
     _description = "Subscription Document Fields"
     _rec_name = 'field'
 
+    # in v14, Odoo doesn't allow to have the 'model' field required=True, so I set it as
+    # required in the view
     field = fields.Many2one(
-        'ir.model.fields', domain="[('model_id', '=', parent.model)]",
-        required=True)
+        'ir.model.fields', domain="[('model_id', '=', parent.model)]")
     value = fields.Selection([
         ('false', 'False'),
         ('date', 'Current Date')],
@@ -52,40 +56,35 @@ class Subscription(models.Model):
     _description = "Subscription"
     _inherit = ['mail.thread', 'mail.activity.mixin']
 
-    name = fields.Char(required=True, track_visibility='onchange')
+    name = fields.Char(required=True, tracking=True)
     active = fields.Boolean(
-        default=True, track_visibility='onchange',
-        states={'running': [('readonly', True)]},
-        help="If the active field is set to False, it will allow you to hide "
-        "the subscription without removing it.")
+        default=True, tracking=True,
+        states={'running': [('readonly', True)]})
     partner_id = fields.Many2one(
-        'res.partner', string='Partner', ondelete='restrict',
-        track_visibility='onchange')
+        'res.partner', string='Partner', ondelete='restrict', tracking=True)
     notes = fields.Text(string='Internal Notes')
     user_id = fields.Many2one(
         'res.users', string='User', required=True,
-        default=lambda self: self.env.user, track_visibility='onchange')
+        default=lambda self: self.env.user, tracking=True)
     interval_number = fields.Integer(
         readonly=True, states={'draft': [('readonly', False)]},
-        string='Internal Qty', default=1, track_visibility='onchange')
+        string='Internal Qty', default=1, tracking=True)
     interval_type = fields.Selection([
         ('days', 'Days'),
         ('weeks', 'Weeks'),
         ('months', 'Months')],
-        string='Interval Unit', default='months', track_visibility='onchange',
+        string='Interval Unit', default='months', tracking=True,
         readonly=True, states={'draft': [('readonly', False)]})
     exec_init = fields.Integer(
-        string='Number of Documents', track_visibility='onchange',
+        string='Number of Documents', tracking=True,
         default=-1)
     date_init = fields.Datetime(
-        string='First Date', default=fields.Datetime.now,
-        track_visibility='onchange')
+        string='First Date', default=fields.Datetime.now, tracking=True)
     state = fields.Selection([
         ('draft', 'Draft'),
         ('running', 'Running'),
         ('done', 'Done')],
-        string='Status', copy=False, default='draft',
-        track_visibility='onchange')
+        string='Status', copy=False, default='draft', tracking=True)
     doc_source = fields.Reference(
         selection=_get_document_types, string='Source Document',
         required=True,
@@ -104,7 +103,7 @@ class Subscription(models.Model):
 
     @api.model
     def _auto_end(self):
-        super(Subscription, self)._auto_end()
+        super()._auto_end()
         # drop the FK from subscription to ir.cron, as it would cause
         # deadlocks during cron job execution. When model_copy()
         # tries to write() on the subscription, it has to wait for an
@@ -124,7 +123,7 @@ class Subscription(models.Model):
         assert len(sub_model) == 1
 
         for subscription in self:
-            cron_data = {
+            cron_vals = {
                 'name': subscription.name,
                 'interval_number': subscription.interval_number,
                 'interval_type': subscription.interval_type,
@@ -136,7 +135,7 @@ class Subscription(models.Model):
                 'priority': 6,
                 'user_id': subscription.user_id.id
             }
-            cron = self.env['ir.cron'].sudo().create(cron_data)
+            cron = self.env['ir.cron'].sudo().create(cron_vals)
             subscription.write({'cron_id': cron.id, 'state': 'running'})
 
     @api.model
@@ -172,9 +171,12 @@ class Subscription(models.Model):
                                           copied_doc.id)})
 
     def unlink(self):
-        if any(self.filtered(lambda s: s.state == "running")):
-            raise UserError(_('You cannot delete an active subscription!'))
-        return super(Subscription, self).unlink()
+        for sub in self:
+            if sub.state == "running":
+                raise UserError(_(
+                    "You cannot delete subscription '%s' "
+                    "because it is in running state.") % sub.display_name)
+        return super().unlink()
 
     def set_done(self):
         self.mapped('cron_id').write({'active': False})

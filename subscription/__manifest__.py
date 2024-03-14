@@ -3,12 +3,13 @@
 
 {
     'name': 'Recurring Documents',
-    'version': '12.0.1.0.0',
+    'version': '14.0.1.0.0',
     'category': 'Extra Tools',
     'summary': 'Generate recurring invoices, sale orders, purchase orders, etc.',
     'license': 'LGPL-3',
-    'author': 'Odoo SA, Odoo Community Association (OCA)',
-    'website': 'https://github.com/OCA/server-ux',
+    'author': 'Odoo SA, Akretion',
+    'maintainers': ['alexis-via'],
+    'website': 'https://github.com/akretion/subscription',
     'depends': ['mail'],
     'data': [
         'security/ir.model.access.csv',
