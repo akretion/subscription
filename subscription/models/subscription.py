@@ -87,7 +87,6 @@ class Subscription(models.Model):
         string='Status', copy=False, default='draft', tracking=True)
     doc_source = fields.Reference(
         selection=_get_document_types, string='Source Document',
-        required=True,
         help="User can choose the source document on which he wants to create "
         "documents")
     doc_lines = fields.One2many(
